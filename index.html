@@ -1,0 +1,200 @@
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Killabees80 Planer</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.png" type="image/png">
+  <meta name="theme-color" content="#000000">
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #000;
+      color: #ffc107;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      text-align: center;
+      padding: 1rem 0;
+      background: #111;
+    }
+    .banner {
+      max-width: 100%;
+      height: auto;
+    }
+    h1 {
+      font-size: 1.8rem;
+      margin: 0.5rem 0;
+    }
+    .container {
+      max-width: 600px;
+      margin: auto;
+      padding: 1rem;
+    }
+    form {
+      background: #1a1a1a;
+      padding: 1rem;
+      border-radius: 8px;
+      box-shadow: 0 0 10px #333;
+      margin-bottom: 2rem;
+    }
+    form input, form textarea {
+      width: 100%;
+      margin-bottom: 1rem;
+      padding: 0.5rem;
+      border: 1px solid #ffc107;
+      background: #000;
+      color: #ffc107;
+      border-radius: 4px;
+    }
+    form button {
+      background: #ffc107;
+      color: #000;
+      padding: 0.6rem 1rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .entry {
+      background: #1a1a1a;
+      margin-bottom: 1rem;
+      padding: 1rem;
+      border-radius: 6px;
+      box-shadow: 0 0 5px #222;
+      position: relative;
+    }
+    .entry button {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: red;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 0.2rem 0.6rem;
+      cursor: pointer;
+    }
+    @media (max-width: 600px) {
+      h1 {
+        font-size: 1.4rem;
+      }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <img src="banner.png" alt="Killabees80 Banner" class="banner">
+  <h1>Killabees80 Planer</h1>
+</header>
+
+<div class="container">
+  <form id="terminForm">
+    <label for="datum">Datum:</label>
+    <input type="date" id="datum" required>
+
+    <label for="zeit">Uhrzeit:</label>
+    <input type="time" id="zeit" required>
+
+    <label for="ort">Ort:</label>
+    <input type="text" id="ort" required>
+
+    <label for="grund">Grund:</label>
+    <textarea id="grund" rows="3" required></textarea>
+
+    <button type="submit">Eintragen</button>
+  </form>
+
+  <div id="eintraege"></div>
+</div>
+
+<script>
+  const form = document.getElementById("terminForm");
+  const eintraegeDiv = document.getElementById("eintraege");
+
+  const ladeEintraege = () => {
+    const daten = JSON.parse(localStorage.getItem("termine")) || [];
+    daten.sort((a, b) => new Date(`${a.datum}T${a.zeit}`) - new Date(`${b.datum}T${b.zeit}`));
+    eintraegeDiv.innerHTML = "";
+    daten.forEach((eintrag, index) => {
+      const div = document.createElement("div");
+      div.className = "entry";
+      div.innerHTML = `
+        <strong>${eintrag.datum} – ${eintrag.zeit}</strong><br>
+        ${eintrag.ort}<br>${eintrag.grund}
+        <button onclick="loescheEintrag(${index})" style="background:none;border:none;"><img src=\"controller-icon.png\" alt=\"Löschen\" width=\"32\"></button>
+      `;
+      eintraegeDiv.appendChild(div);
+    });
+  };
+
+  const speichereEintrag = (eintrag) => {
+    const daten = JSON.parse(localStorage.getItem("termine")) || [];
+    daten.push(eintrag);
+    localStorage.setItem("termine", JSON.stringify(daten));
+    ladeEintraege();
+  };
+
+  const loescheEintrag = (index) => {
+    const daten = JSON.parse(localStorage.getItem("termine")) || [];
+    daten.splice(index, 1);
+    localStorage.setItem("termine", JSON.stringify(daten));
+    ladeEintraege();
+  };
+
+  window.loescheEintrag = loescheEintrag;
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const eintrag = {
+      datum: form.datum.value,
+      zeit: form.zeit.value,
+      ort: form.ort.value,
+      grund: form.grund.value,
+    };
+    speichereEintrag(eintrag);
+    form.reset();
+  });
+
+  ladeEintraege();
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').then(() => {
+      console.log('Service Worker registriert');
+    });
+  }
+
+// Erinnerungsfunktion (lokal, einfache Prüfung jede Minute)
+function checkReminders() {
+  const now = new Date();
+  const daten = JSON.parse(localStorage.getItem("termine")) || [];
+
+  daten.forEach((eintrag, index) => {
+    const terminZeit = new Date(`${eintrag.datum}T${eintrag.zeit}`);
+    const diff = (terminZeit - now) / 1000 / 60;
+
+    if (diff > 4 && diff < 5 && !eintrag.erinnert) {
+      // Benachrichtigung anzeigen
+      if (Notification.permission === 'granted') {
+        new Notification("Erinnerung", {
+          body: `Termin um ${eintrag.zeit} in ${eintrag.ort}: ${eintrag.grund}`
+        });
+
+        daten[index].erinnert = true;
+        localStorage.setItem("termine", JSON.stringify(daten));
+      }
+    }
+  });
+}
+
+if ('Notification' in window && Notification.permission !== 'granted') {
+  Notification.requestPermission();
+}
+
+setInterval(checkReminders, 60000); // alle 60 Sekunden prüfen
+</script>
+</body>
+</html>
